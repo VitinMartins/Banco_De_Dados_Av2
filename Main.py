@@ -69,8 +69,6 @@ class SQLProcessorGUI:
     def validar_tabelas_colunas(self, partes):
         erros = []
         tabelas_utilizadas = [partes["FROM"]] + [join[0] for join in partes["JOIN"]]
-
-        # Converter METADADOS para minúsculas para comparação
         metadados_lower = {k.lower(): [c.lower() for c in v] for k, v in METADADOS.items()}
 
         for tabela in tabelas_utilizadas:
@@ -111,18 +109,19 @@ class SQLProcessorGUI:
         base = partes["FROM"]
         G.add_node(base)
 
+        # Corrigido: sempre conecta as junções ao nó base inicial
         for tabela, cond in partes["JOIN"]:
             G.add_node(tabela)
             G.add_edge(base, tabela, label=f"JOIN ON {cond}")
-            base = tabela
 
+        ultimo = base
         if partes["WHERE"]:
             G.add_node("σ (seleção)")
             G.add_edge("σ (seleção)", base, label=partes["WHERE"])
-            base = "σ (seleção)"
+            ultimo = "σ (seleção)"
 
         G.add_node("π (projeção)")
-        G.add_edge("π (projeção)", base)
+        G.add_edge("π (projeção)", ultimo)
 
         fig = plt.Figure(figsize=(7, 4))
         ax = fig.add_subplot(111)
