@@ -1,9 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
 import re
-import networkx as nx
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 # Metadados
 METADADOS = {
@@ -35,10 +32,7 @@ class SQLProcessorGUI:
 
         self.relacional_text = self.create_output("Álgebra Relacional")
         self.ordem_text = self.create_output("Ordem de Execução")
-        self.plano_text = self.create_output("Plano de Execução")
-
-        self.graph_frame = ttk.LabelFrame(root, text="Grafo de Operadores")
-        self.graph_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.plano_text = self.create_output("Árvore de Operadores")
 
     def create_output(self, title):
         frame = ttk.LabelFrame(self.root, text=title)
@@ -103,38 +97,22 @@ class SQLProcessorGUI:
 
         return erros
 
-    def desenhar_grafo(self, partes):
-        G = nx.DiGraph()
-
+    def construir_arvore(self, partes):
+        arvore = []
         base = partes["FROM"]
-        G.add_node(base)
-
-        for tabela, cond in partes["JOIN"]:
-            G.add_node(tabela)
-            G.add_edge(base, tabela, label=f"JOIN ON {cond}")
-
-        ultimo = base
+        arvore.append(f"FROM -> {base}")
+        
         if partes["WHERE"]:
-            G.add_node("σ (seleção)")
-            G.add_edge("σ (seleção)", base, label=partes["WHERE"])
-            ultimo = "σ (seleção)"
-
-        G.add_node("π (projeção)")
-        G.add_edge("π (projeção)", ultimo)
-
-        fig = plt.Figure(figsize=(7, 4))
-        ax = fig.add_subplot(111)
-        pos = nx.spring_layout(G, k=1.2)
-        nx.draw(G, pos, ax=ax, with_labels=True, node_color="lightblue", node_size=2000, font_size=9)
-        edge_labels = nx.get_edge_attributes(G, 'label')
-        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax, font_size=8)
-
-        for widget in self.graph_frame.winfo_children():
-            widget.destroy()
-
-        canvas = FigureCanvasTkAgg(fig, master=self.graph_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            arvore.append(f"WHERE -> {partes['WHERE']}")
+        
+        if partes["JOIN"]:
+            for tabela, cond in partes["JOIN"]:
+                arvore.append(f"JOIN {tabela} ON {cond}")
+        
+        if partes["SELECT"]:
+            arvore.append(f"SELECT -> {partes['SELECT']}")
+        
+        return arvore
 
     def executar_consulta(self):
         sql = self.sql_entry.get("1.0", tk.END).strip()
@@ -155,20 +133,8 @@ class SQLProcessorGUI:
         else:
             self.relacional_text.config(fg='black')
 
-        # Reorganizando operadores na ordem mais restritiva
-        relacao_joins = ' ⨝ '.join([f"{join[0]}" for join in partes["JOIN"]]) or ""
-        base = partes["FROM"] + (' ⨝ ' + relacao_joins if relacao_joins else "")
-
-        where = f"σ({partes['WHERE']})" if partes["WHERE"] else ""
-        projecao = f"π({partes['SELECT']})" if partes["SELECT"] else "π(*)"
-
-        alg_rel = f"{projecao}({where}({base}))" if where else f"{projecao}({base})"
-
-        self.relacional_text.insert(tk.END, alg_rel)
-        self.ordem_text.insert(tk.END, "1. Seleção (σ)\n2. Junção (⨝)\n3. Projeção (π)")
-        self.plano_text.insert(tk.END, f"Consulta válida com {len(partes['JOIN'])+1} tabela(s).")
-
-        self.desenhar_grafo(partes)
+        arvore = self.construir_arvore(partes)
+        self.plano_text.insert(tk.END, "\n".join(arvore))
 
 if __name__ == "__main__":
     root = tk.Tk()
