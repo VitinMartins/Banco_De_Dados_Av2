@@ -5,6 +5,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+# Metadados
 METADADOS = {
     "Categoria": ["idCategoria", "Descricao"],
     "Produto": ["idProduto", "Nome", "Descricao", "Preco", "QuantEstoque", "Categoria_idCategoria"],
@@ -54,7 +55,6 @@ class SQLProcessorGUI:
         from_match = re.search(r"FROM (\w+)", sql, re.IGNORECASE)
         joins = re.findall(r"JOIN (\w+) ON (.+?)(?: JOIN| WHERE|$)", sql, re.IGNORECASE)
         where_match = re.search(r"WHERE (.+)", sql, re.IGNORECASE)
-
         if select_match:
             partes["SELECT"] = select_match.group(1).strip()
         if from_match:
@@ -109,7 +109,6 @@ class SQLProcessorGUI:
         base = partes["FROM"]
         G.add_node(base)
 
-        # Corrigido: sempre conecta as junções ao nó base inicial
         for tabela, cond in partes["JOIN"]:
             G.add_node(tabela)
             G.add_edge(base, tabela, label=f"JOIN ON {cond}")
@@ -156,6 +155,7 @@ class SQLProcessorGUI:
         else:
             self.relacional_text.config(fg='black')
 
+        # Reorganizando operadores na ordem mais restritiva
         relacao_joins = ' ⨝ '.join([f"{join[0]}" for join in partes["JOIN"]]) or ""
         base = partes["FROM"] + (' ⨝ ' + relacao_joins if relacao_joins else "")
 
@@ -165,7 +165,7 @@ class SQLProcessorGUI:
         alg_rel = f"{projecao}({where}({base}))" if where else f"{projecao}({base})"
 
         self.relacional_text.insert(tk.END, alg_rel)
-        self.ordem_text.insert(tk.END, "1. Seleção\n2. Junção\n3. Projeção")
+        self.ordem_text.insert(tk.END, "1. Seleção (σ)\n2. Junção (⨝)\n3. Projeção (π)")
         self.plano_text.insert(tk.END, f"Consulta válida com {len(partes['JOIN'])+1} tabela(s).")
 
         self.desenhar_grafo(partes)
