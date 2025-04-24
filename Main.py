@@ -83,7 +83,7 @@ class SQLProcessorGUI:
                     erros.append(f"Coluna inválida: {coluna}")
 
         if partes["WHERE"]:
-            condicoes = re.split(r"\s+AND\s+|\s+OR\s+", partes["WHERE"], flags=re.IGNORECASE)
+            condicoes = re.split(r"\s+AND\s+", partes["WHERE"], flags=re.IGNORECASE)
             for cond in condicoes:
                 col = re.split(r"\s*[<>=!]+\s*", cond.strip())[0]
                 col = col.strip()
@@ -97,25 +97,13 @@ class SQLProcessorGUI:
 
         return erros
 
-    def construir_arvore(self, partes):
-        arvore = []
-        base = partes["FROM"]
-        arvore.append(f"FROM -> {base}")
-        
-        if partes["WHERE"]:
-            arvore.append(f"WHERE -> {partes['WHERE']}")
-        
-        if partes["JOIN"]:
-            for tabela, cond in partes["JOIN"]:
-                arvore.append(f"JOIN {tabela} ON {cond}")
-        
-        if partes["SELECT"]:
-            arvore.append(f"SELECT -> {partes['SELECT']}")
-        
-        return arvore
-
     def executar_consulta(self):
         sql = self.sql_entry.get("1.0", tk.END).strip()
+        
+        if sql.endswith(';'):
+            sql = sql[:-1].strip()
+            
+            
         if not sql:
             return
 
@@ -133,8 +121,21 @@ class SQLProcessorGUI:
         else:
             self.relacional_text.config(fg='black')
 
-        arvore = self.construir_arvore(partes)
-        self.plano_text.insert(tk.END, "\n".join(arvore))
+        relacao_joins = ' ⨝ '.join([f"{join[0]}" for join in partes["JOIN"]]) or ""
+        base = partes["FROM"] + (' ⨝ ' + relacao_joins if relacao_joins else "")
+        where = f"σ({partes['WHERE']})" if partes["WHERE"] else ""
+        projecao = f"π({partes['SELECT']})" if partes["SELECT"] else "π(*)"
+
+        alg_rel = f"{projecao}({where}({base}))" if where else f"{projecao}({base})"
+
+        self.relacional_text.insert(tk.END, alg_rel)
+
+        ordem_execucao = [
+            "1. Seleção (σ) - Reduz tuplas",
+            "2. Junção (⨝) - Combinação entre tabelas (prioridade nas mais restritivas)",
+            "3. Projeção (π) - Reduz colunas"
+        ]
+        self.ordem_text.insert(tk.END, "\n".join(ordem_execucao))
 
 if __name__ == "__main__":
     root = tk.Tk()
