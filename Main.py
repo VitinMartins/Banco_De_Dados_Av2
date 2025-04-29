@@ -2,6 +2,10 @@ import tkinter as tk
 from tkinter import ttk
 import re
 
+#Falta organizar os parenteses;
+#Por as informações da junção on no fim da algebra
+#Para cada operação fazer a ordem de execução(Pode ser expresso so pelo grafo sinalizando a ordem de onde vai pra onde)
+
 # Metadados
 METADADOS = {
     "Categoria": ["idCategoria", "Descricao"],
