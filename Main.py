@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import ttk
 import re
 
-# Metadados
 METADADOS = {
     "Categoria": ["idCategoria", "Descricao"],
     "Produto": ["idProduto", "Nome", "Descricao", "Preco", "QuantEstoque", "Categoria_idCategoria"],
@@ -32,7 +31,6 @@ class SQLProcessorGUI:
 
         self.relacional_text = self.create_output("Álgebra Relacional")
         self.ordem_text = self.create_output("Ordem de Execução")
-        self.plano_text = self.create_output("Árvore de Operadores")
 
     def create_output(self, title):
         frame = ttk.LabelFrame(self.root, text=title)
@@ -43,99 +41,72 @@ class SQLProcessorGUI:
 
     def parse_sql(self, sql):
         partes = {"SELECT": "", "FROM": "", "JOIN": [], "WHERE": ""}
+        # Remove comentários, quebras de linha e espaços extras
         sql = re.sub(r"\s+", " ", sql.strip())
 
+        # Capturando as cláusulas SELECT e FROM
         select_match = re.search(r"SELECT (.+?) FROM", sql, re.IGNORECASE)
         from_match = re.search(r"FROM (\w+)", sql, re.IGNORECASE)
-        joins = re.findall(r"JOIN (\w+) ON (.+?)(?: JOIN| WHERE|$)", sql, re.IGNORECASE)
+        if not select_match or not from_match:
+            raise ValueError("Consulta SQL inválida: certifique-se de que a consulta contenha as cláusulas SELECT e FROM.")
+
+        # Capturando possíveis JOINs e a cláusula WHERE (opcional)
+        joins = re.findall(r"JOIN\s+(\w+)\s+ON\s+(.+?)(?=\s+JOIN|\s+WHERE|$)", sql, re.IGNORECASE)
         where_match = re.search(r"WHERE (.+)", sql, re.IGNORECASE)
-        if select_match:
-            partes["SELECT"] = select_match.group(1).strip()
-        if from_match:
-            partes["FROM"] = from_match.group(1).strip()
+
+        partes["SELECT"] = select_match.group(1).strip()
+        partes["FROM"] = from_match.group(1).strip()
         if joins:
-            partes["JOIN"] = joins
+            partes["JOIN"] = [{"tabela": j[0], "condicao": j[1].strip()} for j in joins]
         if where_match:
             partes["WHERE"] = where_match.group(1).strip()
 
         return partes
 
-    def validar_tabelas_colunas(self, partes):
-        erros = []
-        tabelas_utilizadas = [partes["FROM"]] + [join[0] for join in partes["JOIN"]]
-        metadados_lower = {k.lower(): [c.lower() for c in v] for k, v in METADADOS.items()}
-
-        for tabela in tabelas_utilizadas:
-            if tabela.lower() not in metadados_lower:
-                erros.append(f"Tabela não existe: {tabela}")
-
-        colunas = [col.strip() for col in partes["SELECT"].split(",") if col.strip()]
-        if colunas == ['*']:
-            colunas = []
-
-        for coluna in colunas:
-            if '.' in coluna:
-                tabela_ref, col_ref = coluna.split('.')
-                if tabela_ref.lower() not in metadados_lower or col_ref.lower() not in metadados_lower[tabela_ref.lower()]:
-                    erros.append(f"Coluna inválida: {coluna}")
-            else:
-                if not any(coluna.lower() in metadados_lower[t] for t in metadados_lower):
-                    erros.append(f"Coluna inválida: {coluna}")
-
-        if partes["WHERE"]:
-            condicoes = re.split(r"\s+AND\s+", partes["WHERE"], flags=re.IGNORECASE)
-            for cond in condicoes:
-                col = re.split(r"\s*[<>=!]+\s*", cond.strip())[0]
-                col = col.strip()
-                if '.' in col:
-                    tabela_ref, col_ref = col.split('.')
-                    if tabela_ref.lower() not in metadados_lower or col_ref.lower() not in metadados_lower[tabela_ref.lower()]:
-                        erros.append(f"Coluna inválida no WHERE: {col}")
-                else:
-                    if not any(col.lower() in metadados_lower[t] for t in metadados_lower):
-                        erros.append(f"Coluna inválida no WHERE: {col}")
-
-        return erros
-
     def executar_consulta(self):
         sql = self.sql_entry.get("1.0", tk.END).strip()
-        
         if sql.endswith(';'):
             sql = sql[:-1].strip()
-            
-            
         if not sql:
+            self.relacional_text.delete("1.0", tk.END)
+            self.relacional_text.insert(tk.END, "A consulta SQL está vazia. Por favor, insira uma consulta válida.")
             return
 
-        partes = self.parse_sql(sql)
-        erros = self.validar_tabelas_colunas(partes)
+        try:
+            partes = self.parse_sql(sql)
+        except Exception as e:
+            self.relacional_text.delete("1.0", tk.END)
+            self.relacional_text.insert(tk.END, f"Erro: {str(e)}")
+            return
 
         self.relacional_text.delete("1.0", tk.END)
         self.ordem_text.delete("1.0", tk.END)
-        self.plano_text.delete("1.0", tk.END)
 
-        if erros:
-            self.relacional_text.insert(tk.END, "[ERROS NA CONSULTA:]\n" + "\n".join(erros))
-            self.relacional_text.config(fg='red')
-            return
+        # Constrói a cadeia de junções com o mínimo de parênteses
+        if partes["JOIN"]:
+            join_chain = partes["FROM"] + " ⨝ " + " ⨝ ".join(
+                [f"{j['tabela']} ON {j['condicao']}" for j in partes["JOIN"]]
+            )
         else:
-            self.relacional_text.config(fg='black')
+            join_chain = partes["FROM"]
 
-        relacao_joins = ' ⨝ '.join([f"{join[0]}" for join in partes["JOIN"]]) or ""
-        base = partes["FROM"] + (' ⨝ ' + relacao_joins if relacao_joins else "")
-        where = f"σ({partes['WHERE']})" if partes["WHERE"] else ""
-        projecao = f"π({partes['SELECT']})" if partes["SELECT"] else "π(*)"
+        # Aplica a seleção se houver cláusula WHERE
+        if partes["WHERE"]:
+            relacao = f"σ({partes['WHERE']})({join_chain})"
+        else:
+            relacao = join_chain
 
-        alg_rel = f"{projecao}({where}({base}))" if where else f"{projecao}({base})"
+        # Aplica a projeção final
+        projecao = f"π({partes['SELECT']})({relacao})"
 
-        self.relacional_text.insert(tk.END, alg_rel)
+        self.relacional_text.insert(tk.END, projecao)
 
-        ordem_execucao = [
-            "1. Seleção (σ) - Reduz tuplas",
-            "2. Junção (⨝) - Combinação entre tabelas (prioridade nas mais restritivas)",
-            "3. Projeção (π) - Reduz colunas"
-        ]
-        self.ordem_text.insert(tk.END, "\n".join(ordem_execucao))
+        ordem_execucao = (
+            "1. Seleção (σ): Aplica os predicados da cláusula WHERE.\n"
+            "2. Junção (⨝): Realiza as junções com as condições ON.\n"
+            "3. Projeção (π): Seleciona os atributos desejados."
+        )
+        self.ordem_text.insert(tk.END, ordem_execucao)
 
 if __name__ == "__main__":
     root = tk.Tk()
