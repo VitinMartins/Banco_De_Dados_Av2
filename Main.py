@@ -51,7 +51,7 @@ def validar_esquema(partes):
 class OperatorNode:
     def __init__(self, op_type, children=None, predicate=None, table_name=None, projection_list=None):
         self.op_type = op_type             
-        self.children = children if children is not None else []
+        self.children = children if children is not None else [] #Join terá 2 filhos, tabela esquerda e direita
         self.predicate = predicate          
         self.table_name = table_name       
         self.projection_list = projection_list 
@@ -68,22 +68,29 @@ class OperatorNode:
         else:
             return self.op_type
 
+#Montar a árvore de operadores relacionais ou grafo de operadores
 def build_operator_graph(partes):
+    #Nó inicial
     tree = OperatorNode("TABLE", table_name=partes["FROM"])
 
     for join in partes["JOIN"]:
+        #Pra cada uma, cria um nó de tabela:
         right_table = OperatorNode("TABLE", table_name=join["tabela"])
+        #Cria um novo nó join com:
         tree = OperatorNode("JOIN", children=[tree, right_table], predicate=join["condicao"])
 
+    #Se existir, ela será aplicada sobre o resultado das junções
     if partes["WHERE"]:
         tree = OperatorNode("SELECTION", children=[tree], predicate=partes["WHERE"])
-
+                                        #Árvore anterior |Condição do filtro
     if partes["SELECT"].strip() != "*":
         proj_list = [col.strip() for col in partes["SELECT"].split(",")]
         tree = OperatorNode("PROJECTION", children=[tree], projection_list=proj_list)
-
+                                          #Árvore atual  | Lista de colunas
     return tree
 
+
+#Converte a árvore de operadores relacionais em um grafo direcionado do NetworkX para plotagem do grafo
 def build_nx_graph_from_operator(node, G, parent_id=None, counter=[0]):
     current_id = counter[0]
     counter[0] += 1
@@ -94,6 +101,7 @@ def build_nx_graph_from_operator(node, G, parent_id=None, counter=[0]):
         build_nx_graph_from_operator(child, G, current_id, counter)
     return G
 
+#Desenhar o grafo de operadores que foi construído a partir da árvore de operadores relacionais
 def draw_operator_graph_visual(operator_node):
     G = nx.DiGraph()
     G = build_nx_graph_from_operator(operator_node, G)
@@ -109,12 +117,14 @@ def draw_operator_graph_visual(operator_node):
     plt.axis('off')
     plt.show()
 
+#Exibir a árvore de operadores de forma indentada (recuada), simulando a hierarquia das operações, de forma textual
 def display_operator_graph(node, indent=0):
     representation = "  " * indent + str(node) + "\n"
     for child in node.children:
         representation += display_operator_graph(child, indent + 1)
     return representation
 
+#Retornar uma lista ordenada com os passos de execução da consulta, na ordem pós-ordem
 def get_execution_order(node):
     steps = []
     for child in node.children:
@@ -198,18 +208,17 @@ class SQLProcessorGUI:
 
         self.relacional_text.delete("1.0", tk.END)
         self.relacional_text.insert(tk.END, projecao)
-
+        
+        
+        #Construção/plote do grafo
         operador_raiz = build_operator_graph(partes)
-
         grafo_str = display_operator_graph(operador_raiz)
         self.grafo_text.delete("1.0", tk.END)
         self.grafo_text.insert(tk.END, grafo_str)
-
         ordem_exec = get_execution_order(operador_raiz)
         ordem_exec_str = "\n".join(f"{i+1}. {step}" for i, step in enumerate(ordem_exec))
         self.ordem_text.delete("1.0", tk.END)
         self.ordem_text.insert(tk.END, ordem_exec_str)
-
         draw_operator_graph_visual(operador_raiz)
 
 if __name__ == "__main__":
